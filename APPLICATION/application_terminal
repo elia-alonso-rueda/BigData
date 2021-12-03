@@ -1,0 +1,291 @@
+#LINEAR REGRESSION (R2=0.99)
+
+"""
+BIG DATA PRACTICAL APPLICATION
+Itziar Alonso, Miriam Gutierrez, Elia Alonso
+"""
+
+
+"LOAD THE INPUT DATA"
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col,sum
+import pyspark.sql.functions as F
+from pyspark.sql.functions import mean as _mean
+from pyspark.ml.feature import (OneHotEncoder, StringIndexer)
+from pyspark.ml.feature import VectorAssembler
+from pyspark.ml import Pipeline
+from pyspark.sql.types import StringType
+from pyspark.ml.feature import MinMaxScaler
+from pyspark.sql.functions import udf
+from pyspark.sql.types import DoubleType, IntegerType
+from pyspark.ml.regression import LinearRegression
+from pyspark.ml.evaluation import RegressionEvaluator
+from pyspark.ml.feature import VectorAssembler
+import sys
+import time
+
+
+def main():
+
+    spark = SparkSession.builder.appName('ml-1987').getOrCreate()
+    sc = spark.sparkContext
+    sc.setLogLevel("ERROR")
+    csv_file = sys.argv[1]
+
+    "PRE-PROCESSING"
+
+    "1- INPUT DATA"
+
+    "LOADING INPUT DATA"
+    print("Loading input data...")
+
+    df = spark.read.csv(csv_file, header = True, inferSchema = True)
+
+    "SHOW THE NUMBER OF INSTANCES AND COLUMNS OF THE INPUT DATA SET"
+    print("Let's have an overview of the original data set:")
+    print("Number of instances: ",df.count())
+    print("Number of columns: ", len(df.columns))
+    print("Name and type of each variable:")
+    df.printSchema()
+
+
+
+    
+    "2- PRE-PROCESSING"
+    "2.1. REMOVALS"
+    "Remove forbidden variables"
+    print("Removing forbidden variables...")
+    df_drop_forbidden = df.drop(*['ArrTime','ActualElapsedTime', 'AirTime', 'TaxiIn', 'Diverted', 'CarrierDelay', 'WeatherDelay', 'NASDelay', 'SecurityDelay', 'LateAircraftDelay'])
+    print("Number of columns after removing the forbidden variables: ", len(df_drop_forbidden.columns))
+    
+    "Remove unuseful variables"
+    print("Removing unuseful variables...")
+    df_drop = df_drop_forbidden.drop(*['DepTime','CRSDepTime', 'FlightNum'])
+    print("Number of columns after removing the unuseful variables: ", len(df_drop.columns))
+    print("Now, the data set looks like this:")
+    df_drop.printSchema()
+    
+    "If one column contains one only value, it will be removed."
+    print("Removing columns with just one value...")
+    df_drop_one = df_drop
+    print("Removed columns with one only value:")
+    for one in df_drop_one.columns:
+        if df_drop_one.select(one).distinct().count() == 1:
+            print(one)
+            df_drop_one = df_drop_one.drop(one)
+    print("Number of columns after removing these variables: ", len(df_drop_one.columns))
+    
+    print("Removing the instances where ArrDelay is a missing value...")
+    df_arr_delay = df_drop_one.filter(df_drop_one.ArrDelay != "NA")
+    "Removal of cancelled column since all of them are 0 after the previous removal."
+    df_not_can = df_arr_delay.drop(*['Cancelled'])
+    print("Number of remaining flights: ", df_not_can.count())
+    
+    print("So, the resulting data frame is:")
+    df_not_can.printSchema()
+    df_not_can.count()
+    
+    "2.2. TYPE CHANGES"
+    "Replacing missing values: NA -> None"
+    df_rep = df_not_can.replace(("NA"), None)
+
+    "Numerical columns that are going to be turned into string:"
+    cat_type = ["Year", "Month", "DayofMonth", "DayOfWeek"]
+    print("The numerical variables turning into categorical are:")
+    df_cat = df_rep
+    for cat in df_cat.columns:
+        if cat in cat_type:
+            print(cat)
+            df_cat = df_cat.withColumn(cat, df_cat[cat].cast(StringType()))
+            
+    "String columns that are going to be turned into integer:"
+    int_type=["ArrDelay", "DepDelay", "Distance"]
+    print("The categorical variables turning into numerical are:")
+    for inte in df_cat.columns:
+        if inte in int_type:
+            print(inte)
+            df_cat = df_cat.withColumn(inte, df_cat[inte].cast(IntegerType()))
+
+    print("Therefore, the type of each variable now is:")
+    df_cat.printSchema()       
+
+    
+    "2.3. FILLING MISSING VALUES"
+    "Count the missing values:"
+    def count_missings(spark_df,sort=True):
+        """
+        Counts number of nulls in each column
+        """
+        df = spark_df.select([F.count(F.when(F.isnull(c), c)).alias(c) for (c,c_type) in spark_df.dtypes ]).toPandas()
+        if len(df) == 0:
+            print("There are no any missing values!")
+            return None
+        if sort:
+            return df.rename(index={0: 'count'}).T.sort_values("count",ascending=False)
+        return df
+
+    n_missings=count_missings(df_cat,sort=True)
+    print("Number of missing values in each attribute:", n_missings)
+
+    
+    "If the number of missing values of each variable is over the 70% of the total number of instances, then the variable is removed from the dataframe"
+    print("Removing the variables with missing values over the 70% of the total number of instances...")
+    df_before_dropping = df_cat
+    list_missing=count_missings(df_before_dropping,sort=False)
+    list_missing_array=list_missing.values.tolist()
+    list_missing_array=list_missing_array[0]
+    list_drop=[]
+
+    df_before_dropping.printSchema()
+    print("Columns dropped from the dataframe:")
+    for col in range(0, len(df_before_dropping.columns)):
+        if list_missing_array[col]>0.7*df_before_dropping.count():
+            list_drop.append(df_before_dropping.columns[col])
+    for i in range(0, len(list_drop)):
+        print(list_drop[i])
+        df_before_dropping = df_before_dropping.drop(list_drop[i])
+    df_dropped_missing = df_before_dropping
+    print("Total: ",len(df_rep.columns)-len(df_dropped_missing.columns), 'columns dropped')
+    
+    "Fill null values in the variables that have not been removed"
+    catCols = [x for (x, dataType) in df_dropped_missing.dtypes if dataType =="string"]
+    numCols = [ x for (x, dataType) in df_dropped_missing.dtypes if dataType !="string"]
+    print("After removing the columns that contain more than 70% of missing values:")
+    print("Categorical variables: ", catCols)
+    print("Numerical variables: ", numCols)
+    print("")
+    print("These columns are going to be filled as follows:")
+    print("- Categorical values: with 0.")
+    print("- Numerical values: with the mean of the column.")
+    print("")
+    for col in range(0, len(df_dropped_missing.columns)):
+        name_col=df_dropped_missing.columns[col]
+        if name_col in catCols: # If categorical
+            df_dropped_missing=df_dropped_missing.fillna({ name_col:0} )
+        else:                                     
+            df_stats = df_dropped_missing.select( _mean(name_col).alias('mean')).collect()
+            mean = df_stats[0]['mean']
+            df_dropped_missing=df_dropped_missing.fillna(mean, subset=[name_col])
+    clean_df=df_dropped_missing
+    "Checking that the missing values have been properly removed or filled"
+    print("Checking that the missing values have been properly removed or filled...")
+    print("Now, the number of missing values in each attribute must be 0, let's check it: ", count_missings(clean_df, sort=True))
+    
+    "2.4. CORRELATION ANALYSIS"
+    intCols = [x for (x, dataType) in clean_df.dtypes if dataType =="int"]
+    corr = []
+    for i in intCols:
+        corr.append(i)
+        corr.append(clean_df.stat.corr(i,"ArrDelay"))
+    
+    "2.5. ONE-HOT ENCODING AND SCALING"
+    "One-hot encoding"
+    print("Transforming categorical variables using one-hot encoding...")
+    catCols = [x for (x, dataType) in clean_df.dtypes if dataType =="string"]
+    print("Variables to be transformed:", catCols)
+    string_indexer = [
+        StringIndexer(inputCol=x, outputCol=x + "_StringIndexer", handleInvalid="skip")
+        for x in catCols
+    ]
+
+    one_hot_encoder = [
+        OneHotEncoder(
+            inputCols=[f"{x}_StringIndexer" for x in catCols],
+            outputCols=[f"{x}_OneHotEncoder" for x in catCols],
+        )
+    ]
+
+    stages=[]
+    stages += string_indexer
+    stages += one_hot_encoder
+
+    pipeline = Pipeline().setStages(stages)
+    model = pipeline.fit(clean_df)
+    df_encoded = model.transform(clean_df)
+
+    notStringCols = [x for (x, dataType) in df_encoded.dtypes if ((dataType !="string") and (dataType !="double"))]
+    df_encoded_clean = df_encoded.select([col for col in notStringCols])
+    print("Let's see how the data set looks like after one-hot encoding:")
+    df_encoded_clean.printSchema()
+
+    
+    "Splitting the data set in training and test subsets"
+
+    train, test = df_encoded_clean.randomSplit([0.7, 0.3], seed=7)
+    print("Splitting the data set in training and test subsets with 70% and 30% respectively...")
+    print("Train set length: ", train.count())
+    print("Test set length: ", test.count())
+    
+    "Scaling numerical variables"
+
+    integer_cols = [x for (x, dataType) in train.dtypes if ((dataType =="int") and (x != "ArrDelay"))]
+
+    unlist = udf(lambda x: round(float(list(x)[0]),3), DoubleType())
+    df_scaled_train=train
+    df_scaled_test=test
+
+
+    print("Scaling values in these variables...")
+    for i in integer_cols:
+        print(i)
+        # VectorAssembler Transformation - Converting column to vector type
+        assembler = VectorAssembler(inputCols=[i],outputCol=i+"_Vect")
+
+        # MinMaxScaler Transformation
+        scaler = MinMaxScaler(inputCol=i+"_Vect", outputCol=i+"_Scaled")
+
+        # Pipeline of VectorAssembler and MinMaxScaler
+        pipeline = Pipeline(stages=[assembler, scaler])
+
+        # Fitting pipeline on dataframe
+        
+        df_scaled_train = pipeline.fit(df_scaled_train).transform(df_scaled_train).withColumn(i+"_Scaled", unlist(i+"_Scaled")).drop(i,i+"_Vect")                                                                
+        df_scaled_test = pipeline.fit(df_scaled_test).transform(df_scaled_test).withColumn(i+"_Scaled", unlist(i+"_Scaled")).drop(i,i+"_Vect")                                                                
+
+    
+    "2.6. TRANSFORM INTO A VECTOR"
+
+    print("Transforming the train and test split into a vector using VectorAssembler...")
+    assemblerInput = [col for col in df_scaled_train.columns]
+    vector_assembler = VectorAssembler(
+        inputCols=assemblerInput, outputCol="VectorAssembler_features"
+    )
+    df_vector_train = vector_assembler.transform(df_scaled_train)
+    df_vector_test = vector_assembler.transform(df_scaled_test)
+
+
+
+    #Linear Regression
+    print("Separate the variables into features and label...")
+    data_train = df_vector_train.select(
+        F.col("VectorAssembler_features").alias("features"),
+        F.col("ArrDelay").alias("label"),
+    )
+
+    data_test = df_vector_test.select(
+        F.col("VectorAssembler_features").alias("features"),
+        F.col("ArrDelay").alias("label"),
+    )
+
+    print("Training linear regression model...")
+    lr = LinearRegression(featuresCol = 'features', labelCol='label', standardization=False)
+    lr_model = lr.fit(data_train)
+    
+    print("Coefficients: " + str(lr_model.coefficients))
+    print("Intercept: " + str(lr_model.intercept))
+
+    unlabeled_data = df_vector_test.select(F.col("VectorAssembler_features").alias("features"))
+    print("Predicting the ArrDelay using the test split...")
+    lr_predictions = lr_model.transform(data_test)
+    #lr_predictions.select("prediction","MV","features").show(5)
+
+    print("Calculating the R2...")
+    lr_evaluator = RegressionEvaluator(predictionCol="prediction", \
+                    labelCol="label",metricName="r2")
+        
+    r2 = lr_evaluator.evaluate(lr_predictions)
+
+    print("R Squared (R2) on test data = %g" % lr_evaluator.evaluate(lr_predictions))
+
+if __name__ == '__main__':
+    main()
