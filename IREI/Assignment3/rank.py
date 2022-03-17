@@ -106,7 +106,8 @@ print("corr_sorted", corr_sorted)
 for w in corr_sorted:
     print(f"Image name: {w}, Correlaton: {dict_corr[w]}")
 
-print("Name of the three images with less correlation: ", corr_sorted[0:3])
+thresh = round(len(corr_sorted)*0.15)
+print(f"Name of the {thresh} images with less correlation: {corr_sorted[0:thresh]}")
 
 
 # for hist in range(len(list_hist)):
