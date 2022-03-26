@@ -72,8 +72,10 @@ for path in files:
 print("\n")
 print("1. Colors method \n")
 
+# Normalize the the input image
+newImage_norm = cv2.normalize(newImage, None, alpha=0,beta=200, norm_type=cv2.NORM_MINMAX)
 # Create the histogram for the input image
-hist_newImage = cv2.calcHist([newImage], [0], None, [20],[0, 256])
+hist_newImage = cv2.calcHist([newImage_norm], [0], None, [20],[0, 256])
 
 dict_hist = {}
 # Create a loop to iterate the list of images
@@ -97,8 +99,8 @@ for hist in dict_hist:
     # Store the result of the comparation
     dict_corr[hist] = round(corr, 4)
 
-# Sort the images by correlation
-corr_sorted = sorted(dict_corr, key=dict_corr.get, reverse=True)
+# Sort the images by absolute value of the correlation
+corr_sorted = sorted(dict_corr, key=lambda dict_key: abs(dict_corr[dict_key]), reverse=True)
 # Printing the list of the three images with higher correlation using loop
 for w in corr_sorted:
     print(f"Image name: {w}, Correlaton: {dict_corr[w]}")
@@ -106,25 +108,12 @@ for w in corr_sorted:
 thresh = round(len(corr_sorted)*0.15)
 names_thres = corr_sorted[0:thresh]
 dict_thres = {}
-print(f"Name of the {thresh} images with less correlation: {names_thres}")
+print(f"Name of the {thresh} images with higher correlation: {names_thres}")
 
 # Filter the dictionary of the images using the threshold
 for img in dict_images:
     if (img in corr_sorted[0:thresh]):
         dict_thres[img] = dict_images[img]
-
-# for hist in range(len(list_hist)):
-#     # Create a loop to iterate the list com methods for every histogram
-#     for compare_method in range(4):
-#         # Compare the histogram of the new image with the histograms of the images of the data base
-#         base_base = cv2.compareHist(hist_newImage, list_hist[hist], compare_method)
-#         # Store the result of the comparation
-#         distances_table[hist][compare_method] = round(base_base, 4)
-
-# # Create a loop to print the results
-# print("Methods:     ", methods_names)
-# for i in range(len(array_target)):
-#     print( f"    {array_target[i]}      {distances_table[i]}")
 
 
 #%%
@@ -249,49 +238,31 @@ ax8.set_title(f"Segmentation: {distance_seg_sorted[2]}")
 
 plt.show()
 
-# B) Compute histogram and compare with corr
+# # B) Compute histogram and compare with corr
 
-# Calculate the histogram of the segmentated input image
-hist_seg_newImage = cv2.calcHist([s_newImage], [0], None, [5],[0, 256])
+# # Calculate the histogram of the segmentated input image
+# hist_seg_newImage = cv2.calcHist([s_newImage], [0], None, [5],[0, 256])
 
-# Define a dictionary to store the histogram of the sementated images
-list_hist_seg = {}
-# Create a loop to iterate the list of images segmentated
-for seg in dict_s:
-    # Create a histogram for every image and store it in a list
-    hist = cv2.calcHist([dict_s[seg]], [0], None, [5],[0, 256])
-    list_hist_seg[seg] = hist
+# # Define a dictionary to store the histogram of the sementated images
+# list_hist_seg = {}
+# # Create a loop to iterate the list of images segmentated
+# for seg in dict_s:
+#     # Create a histogram for every image and store it in a list
+#     hist = cv2.calcHist([dict_s[seg]], [0], None, [5],[0, 256])
+#     list_hist_seg[seg] = hist
 
-dict_corr_seg = {}
-# Create a loop to iterate the list of segmentated histograms
-for hist in list_hist_seg:
-    # Compare the histogram of the new image with the histograms of the images of the data base
-    corr_seg = cv2.compareHist(hist_seg_newImage, list_hist_seg[hist], 0)
-    # Store the result of the comparation
-    dict_corr_seg[hist] = round(corr_seg, 4)
-
-# Sort the images by correlation
-corr_seg_sorted = sorted(dict_corr_seg, key=dict_corr_seg.get, reverse=True)
-# Printing the list of the three images with higher correlation using loop
-for w in corr_seg_sorted:
-    print(f"Image name: {w}, Correlaton: {dict_corr_seg[w]}")
-
-print("Name of the three images with higher correlation: ", corr_seg_sorted[0:3])
-
-
-# # Create a list to store the values of the comparations of the segmentated images
-# distances_table_seg = [[0 for x in range(4)] for y in range(len(list_hist_seg))]
-
+# dict_corr_seg = {}
 # # Create a loop to iterate the list of segmentated histograms
-# for hist in range(len(list_hist_seg)):
-#     # Create a loop to iterate the list com methods for every histogram
-#     for compare_method in range(4):
-#         # Compare the histogram of the new image with the histograms of the images of the data base
-#         base_base = cv2.compareHist(hist_seg_newImage, list_hist_seg[hist], compare_method)
-#         # Store the result of the comparation
-#         distances_table_seg[hist][compare_method] = round(base_base, 4) 
+# for hist in list_hist_seg:
+#     # Compare the histogram of the new image with the histograms of the images of the data base
+#     corr_seg = cv2.compareHist(hist_seg_newImage, list_hist_seg[hist], 0)
+#     # Store the result of the comparation
+#     dict_corr_seg[hist] = round(corr_seg, 4)
 
-# # Create a loop to print the results
-# print("Methods:     ", methods_names)
-# for i in range(len(array_target)):
-#     print( f"    {array_target[i]}      {distances_table_seg[i]}")
+# # Sort the images by correlation
+# corr_seg_sorted = sorted(dict_corr_seg, key=dict_corr_seg.get, reverse=True)
+# # Printing the list of the three images with higher correlation using loop
+# for w in corr_seg_sorted:
+#     print(f"Image name: {w}, Correlaton: {dict_corr_seg[w]}")
+
+# print("Name of the three images with higher correlation: ", corr_seg_sorted[0:3])
