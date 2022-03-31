@@ -36,6 +36,8 @@ def segmentation_threshold(img):
     img_otsu  = img_gray < thresh
     filtered = filter_image(img, img_otsu)
     return filtered
+
+    
 #Read and show images
 
 # Define the variables
@@ -237,32 +239,3 @@ ax8.imshow(dict_s[distance_seg_sorted[2]])
 ax8.set_title(f"Segmentation: {distance_seg_sorted[2]}")
 
 plt.show()
-
-# # B) Compute histogram and compare with corr
-
-# # Calculate the histogram of the segmentated input image
-# hist_seg_newImage = cv2.calcHist([s_newImage], [0], None, [5],[0, 256])
-
-# # Define a dictionary to store the histogram of the sementated images
-# list_hist_seg = {}
-# # Create a loop to iterate the list of images segmentated
-# for seg in dict_s:
-#     # Create a histogram for every image and store it in a list
-#     hist = cv2.calcHist([dict_s[seg]], [0], None, [5],[0, 256])
-#     list_hist_seg[seg] = hist
-
-# dict_corr_seg = {}
-# # Create a loop to iterate the list of segmentated histograms
-# for hist in list_hist_seg:
-#     # Compare the histogram of the new image with the histograms of the images of the data base
-#     corr_seg = cv2.compareHist(hist_seg_newImage, list_hist_seg[hist], 0)
-#     # Store the result of the comparation
-#     dict_corr_seg[hist] = round(corr_seg, 4)
-
-# # Sort the images by correlation
-# corr_seg_sorted = sorted(dict_corr_seg, key=dict_corr_seg.get, reverse=True)
-# # Printing the list of the three images with higher correlation using loop
-# for w in corr_seg_sorted:
-#     print(f"Image name: {w}, Correlaton: {dict_corr_seg[w]}")
-
-# print("Name of the three images with higher correlation: ", corr_seg_sorted[0:3])
